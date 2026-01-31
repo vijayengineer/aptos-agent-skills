@@ -1,6 +1,9 @@
 ---
 name: write-contracts
-description: Generate and refactor Aptos Move V2 smart contracts following object-centric patterns, modern syntax, and security best practices. Use when "write move contract", "create smart contract", "build module", "refactor move code", "implement move function".
+description:
+  Generate and refactor Aptos Move V2 smart contracts following object-centric patterns, modern syntax, and security
+  best practices. Use when "write move contract", "create smart contract", "build module", "refactor move code",
+  "implement move function".
 ---
 
 # Write Contracts Skill
@@ -14,6 +17,22 @@ This skill guides you in writing secure, modern Aptos Move V2 smart contracts. A
 3. **Security first**: Verify signers, validate inputs, protect references
 4. **Modern syntax**: Use inline functions, lambdas, current object model
 5. **Document clearly**: Add clear error codes and comments
+
+## Pre-Generation Checklist ⚠️ MANDATORY
+
+**STOP - Answer these questions before writing ANY contract code:**
+
+1. **Does this contract involve NFTs?** (collections, marketplaces, minting, trading)
+   - ✅ YES → You MUST use Digital Asset standard (see Step 2.5 below)
+   - ❌ NO → Continue
+
+2. **Does this contract involve fungible tokens?** (coins, tokens, currencies, reward points)
+   - ✅ YES → You MUST use Fungible Asset standard (see Step 2.6 below)
+   - ❌ NO → Continue
+
+3. **Does this contract need global configuration?** (fees, admin settings, registry)
+   - ✅ YES → You MUST use init_module() for deployment initialization
+   - ❌ NO → Use public entry functions
 
 ## Core Workflow
 
@@ -81,6 +100,145 @@ module my_addr::my_module {
     // Internal helpers
 }
 ```
+
+### Step 2.5: Identify Token Standard - Digital Assets (NFTs) ⭐ CRITICAL
+
+**IF YOUR CONTRACT INVOLVES NFTs** (collections, marketplaces, minting, trading):
+
+⚠️ STOP AND READ THIS SECTION CAREFULLY ⚠️
+
+**CRITICAL TYPE RULE:**
+
+```move
+// ✅ CORRECT - Use this type for ALL NFT references
+use aptos_token_objects::aptos_token::{Self, AptosToken};
+
+public entry fun list_nft(
+    seller: &signer,
+    nft: Object<AptosToken>,  // ← AptosToken type!
+    price: u64
+) { ... }
+
+// ❌ WRONG - DO NOT USE (causes violations)
+use aptos_token_objects::token;
+
+public entry fun list_nft(
+    seller: &signer,
+    nft: Object<token::Token>,  // ← Generic Token - VIOLATION!
+    price: u64
+) { ... }
+```
+
+**Required Imports - Copy exactly:**
+
+```move
+use aptos_token_objects::collection;
+use aptos_token_objects::token;
+use aptos_token_objects::aptos_token::{Self, AptosToken};  // ← Import AptosToken!
+use aptos_token_objects::royalty::{Self, Royalty};
+```
+
+**NFT Marketplace Pattern:**
+
+For NFT marketplaces, you MUST:
+
+1. Use `init_module()` (NOT public `initialize()`)
+2. Marketplace object owns the collection
+3. Use extend_ref to mint as marketplace signer
+
+```move
+fun init_module(deployer: &signer) {
+    // Create marketplace state object
+    let marketplace_ref = object::create_named_object(deployer, b"MARKETPLACE_STATE");
+    let marketplace_signer = object::generate_signer(&marketplace_ref);
+
+    // Marketplace object creates collection
+    collection::create_unlimited_collection(
+        &marketplace_signer,  // ← Marketplace signer owns collection
+        string::utf8(b"Collection description"),
+        string::utf8(b"Collection Name"),
+        option::none(),
+        string::utf8(b"https://uri.com"),
+    );
+
+    // Store config with extend_ref
+    move_to(&marketplace_signer, MarketplaceConfig {
+        admin: signer::address_of(deployer),
+        extend_ref: object::generate_extend_ref(&marketplace_ref),
+    });
+}
+
+public entry fun mint_nft(creator: &signer, name: String, uri: String) acquires MarketplaceConfig {
+    let config = borrow_global<MarketplaceConfig>(get_marketplace_addr());
+    let marketplace_signer = object::generate_signer_for_extending(&config.extend_ref);
+
+    // Mint with marketplace signer
+    token::create_named_token(
+        &marketplace_signer,  // ← Must be collection owner
+        string::utf8(b"Collection Name"),
+        string::utf8(b"Description"),
+        name,
+        option::none(),
+        uri,
+    );
+}
+```
+
+**See:** `../../patterns/DIGITAL_ASSETS.md` lines 381-589 for complete marketplace example
+
+### Step 2.6: Identify Token Standard - Fungible Assets (Tokens/Coins) ⭐ CRITICAL
+
+**IF YOUR CONTRACT INVOLVES FUNGIBLE TOKENS** (coins, tokens, currencies, points):
+
+⚠️ STOP AND READ THIS SECTION CAREFULLY ⚠️
+
+**CRITICAL TYPE RULE:**
+
+```move
+// ✅ CORRECT - Use Fungible Asset standard
+use aptos_framework::fungible_asset::{Self, Metadata, FungibleAsset};
+
+public entry fun transfer(sender: &signer, recipient: address, amount: u64) {
+    let metadata = get_token_metadata();  // Returns Object<Metadata>
+    primary_fungible_store::transfer(sender, metadata, recipient, amount);
+}
+
+// ❌ WRONG - DO NOT use legacy coin module for new tokens
+use aptos_framework::coin;  // ← Deprecated for new tokens
+```
+
+**Required Imports:**
+
+```move
+use aptos_framework::fungible_asset::{Self, Metadata, FungibleAsset, MintRef, BurnRef};
+use aptos_framework::primary_fungible_store;
+use aptos_framework::object::{Self, Object};
+```
+
+**Token Creation Pattern (in init_module):**
+
+```move
+fun init_module(deployer: &signer) {
+    let constructor_ref = &object::create_named_object(deployer, b"MY_TOKEN");
+
+    primary_fungible_store::create_primary_store_enabled_fungible_asset(
+        constructor_ref,
+        option::none(), // max_supply (none = unlimited)
+        string::utf8(b"My Token"),
+        string::utf8(b"MTK"),
+        8, // decimals
+        string::utf8(b"https://icon.png"),
+        string::utf8(b"https://project.com"),
+    );
+
+    // Store permission refs
+    let mint_ref = fungible_asset::generate_mint_ref(constructor_ref);
+    let burn_ref = fungible_asset::generate_burn_ref(constructor_ref);
+    // ... store refs securely
+}
+```
+
+**See:** `../../patterns/FUNGIBLE_ASSETS.md` for complete FA patterns
 
 ### Step 3: Implement Object Creation
 
@@ -192,16 +350,28 @@ public entry fun burn_object(owner: &signer, obj: Object<MyObject>) acquires MyO
 When writing Move contracts, you MUST:
 
 ### Digital Assets (NFTs) ⭐ CRITICAL
-- ✅ **ALWAYS use Digital Asset (DA) standard** for ALL NFT-related contracts (collections, marketplaces, minting)
-- ✅ **ALWAYS import** `aptos_token_objects::collection` and `aptos_token_objects::token` modules
-- ✅ **ALWAYS use** `Object<AptosToken>` for NFT references (NOT generic `Object<T>`)
-- ✅ **ALWAYS create collections** with `collection::create_fixed_collection()` or `collection::create_unlimited_collection()`
-- ✅ **ALWAYS mint tokens** with `token::create_named_token()` or `token::create()` (unnamed)
-- ✅ **ALWAYS set royalties** when creating collections using `royalty::create()`
-- ✅ **ALWAYS verify collection exists** before minting tokens
-- ✅ See `../../patterns/DIGITAL_ASSETS.md` for complete NFT patterns
+
+- ✅ **ALWAYS use** `Object<AptosToken>` for NFT references (NOT `Object<token::Token>`, NOT generic `Object<T>`)
+- ✅ **ALWAYS import** `aptos_token_objects::aptos_token::{Self, AptosToken}`
+- ✅ **ALWAYS use Digital Asset (DA) standard** for ALL NFT-related contracts
+- ✅ **ALWAYS create collections** with `collection::create_fixed_collection()` or
+  `collection::create_unlimited_collection()`
+- ✅ **ALWAYS use init_module()** for marketplace contracts (NOT public `initialize()`)
+- ✅ **ALWAYS have marketplace object own collection** (use extend_ref to mint)
+- ✅ See `../../patterns/DIGITAL_ASSETS.md` for complete patterns
+
+### Fungible Assets (Tokens/Coins) ⭐ CRITICAL
+
+- ✅ **ALWAYS use Fungible Asset (FA) standard** for ALL token/coin contracts
+- ✅ **ALWAYS use** `Object<Metadata>` for token type references
+- ✅ **ALWAYS import** `aptos_framework::fungible_asset` and `primary_fungible_store`
+- ✅ **ALWAYS use init_module()** to create metadata object
+- ✅ **ALWAYS enable primary store** with `create_primary_store_enabled_fungible_asset()`
+- ✅ **ALWAYS store permission refs** (MintRef, BurnRef, TransferRef) securely
+- ✅ See `../../patterns/FUNGIBLE_ASSETS.md` for complete patterns
 
 ### Object Model
+
 - ✅ Use `Object<T>` for all object references (NOT addresses)
 - ✅ Generate all refs (TransferRef, DeleteRef) in constructor before ConstructorRef destroyed
 - ✅ Return `Object<T>` from constructor functions (NEVER return ConstructorRef)
@@ -209,9 +379,11 @@ When writing Move contracts, you MUST:
 - ✅ Use `object::generate_signer(&constructor_ref)` for object signers
 
 ### Security ⭐ CRITICAL - See [SECURITY.md](../../patterns/SECURITY.md)
+
 - ✅ **Verify signer authority** in ALL entry functions: `assert!(signer::address_of(user) == expected, E_UNAUTHORIZED)`
 - ✅ **Verify object ownership**: `assert!(object::owner(obj) == signer::address_of(user), E_NOT_OWNER)`
-- ✅ **Scope global storage** to signer: `borrow_global_mut<T>(signer::address_of(user))` (NEVER accept arbitrary address parameter)
+- ✅ **Scope global storage** to signer: `borrow_global_mut<T>(signer::address_of(user))` (NEVER accept arbitrary
+  address parameter)
 - ✅ **Validate ALL inputs:**
   - Non-zero amounts: `assert!(amount > 0, E_ZERO_AMOUNT)`
   - Minimum thresholds: `assert!(amount >= MIN_SIZE, E_TOO_SMALL)` (prevents fee rounding to zero)
@@ -233,25 +405,149 @@ When writing Move contracts, you MUST:
 - ✅ **Randomness security**: Make randomness functions `entry` (not `public`), balance gas across outcomes
 
 ### Error Handling
+
 - ✅ Define clear error constants: `const E_NOT_OWNER: u64 = 1;`
 - ✅ Use descriptive error names (E_NOT_OWNER, E_INSUFFICIENT_BALANCE, etc.)
 - ✅ Group related errors (1-9: auth, 10-19: amounts, 20-29: validation)
 
 ### Modern Syntax
+
 - ✅ Use inline functions for iteration: `inline fun for_each<T>(v: &vector<T>, f: |&T|)`
 - ✅ Use lambdas for operations: `for_each(&items, |item| { process(item); })`
 - ✅ Use proper imports: `use std::string::String;` not `use std::string;`
-- ✅ Use receiver-style method calls: `obj.is_owner(user)` instead of `is_owner(obj, user)` (define first param as `self`)
+- ✅ Use receiver-style method calls: `obj.is_owner(user)` instead of `is_owner(obj, user)` (define first param as
+  `self`)
 - ✅ Use vector indexed expressions: `&mut vector[index]` instead of `vector::borrow_mut(&mut v, index)`
 - ✅ Use direct named addresses: `@marketplace_addr` instead of helper functions that just return `@marketplace_addr`
 
-### Initialization
-- ✅ Use `init_module(deployer: &signer)` for contract initialization on deployment
-- ✅ Put all initialization logic (registry creation, admin setup) inside `init_module`
-- ✅ `init_module` must be private (no `public` keyword)
-- ✅ `init_module` takes at most one parameter of type `&signer`
+### Initialization ⭐ CRITICAL
+
+**When your contract has global configuration/registry state:**
+
+- ✅ **ALWAYS use `init_module(deployer: &signer)` for ONE-TIME deployment initialization**
+- ✅ **`init_module` is AUTOMATICALLY called on deployment** - no manual transaction required
+- ✅ Put ALL deployment-time setup in `init_module`: admin config, registries, protocol parameters
+- ✅ Use `create_named_object()` in init_module for deterministic addresses
+- ✅ `init_module` MUST be private (no `public` keyword)
+- ✅ `init_module` takes exactly one parameter: `&signer` (the deployer)
+
+**CRITICAL: init_module can ONLY take `&signer` (the deployer) - no other parameters!**
+
+**Decision Criteria:**
+
+| Use Case                                                       | Pattern                                              | Example                                                              |
+| -------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| **Deployment-time config** (one-time setup)                    | `init_module(deployer: &signer)` with defaults       | Marketplace config, protocol registry, admin setup                   |
+| **User-triggered creation** (multiple times, needs parameters) | `public entry fun create_X(...)`                     | `create_market(question, end_time)`, `create_auction(nft, duration)` |
+| **Need custom params at deployment?**                          | `init_module` with defaults + admin update functions | init_module sets fee=250, then `update_fee()` to customize           |
+
+**When to use init_module:**
+
+- ✅ Global configuration that needs DEFAULT values at deployment
+- ✅ Protocol-wide registry (empty initially, populated later by users)
+- ✅ Shared resources (global pools, vaults, counters)
+
+**When NOT to use init_module:**
+
+- ❌ Creating individual instances (markets, auctions, listings) - use `create_X()` functions instead
+- ❌ Functions that need multiple custom parameters - use public entry functions
+- ❌ Actions users perform after deployment - use public entry functions
+
+**Example 1 - Marketplace Config (USE init_module):**
+
+```move
+struct MarketplaceConfig has key {
+    admin: address,
+    fee_bps: u64,
+    paused: bool,
+}
+
+// ✅ CORRECT: Automatic initialization on deployment
+fun init_module(deployer: &signer) {
+    let constructor_ref = object::create_named_object(
+        deployer,
+        b"MARKETPLACE_CONFIG_V1"
+    );
+    let object_signer = object::generate_signer(&constructor_ref);
+
+    move_to(&object_signer, MarketplaceConfig {
+        admin: signer::address_of(deployer),
+        fee_bps: 250, // 2.5% default
+        paused: false,
+    });
+}
+
+// If you need custom fee at deployment, provide admin update function:
+public entry fun update_fee(admin: &signer, new_fee_bps: u64) acquires MarketplaceConfig {
+    let config = borrow_global_mut<MarketplaceConfig>(get_config_address());
+    assert!(signer::address_of(admin) == config.admin, E_NOT_ADMIN);
+    assert!(new_fee_bps <= 1000, E_INVALID_FEE);
+    config.fee_bps = new_fee_bps;
+}
+```
+
+**Example 2 - Prediction Market (DON'T use init_module for create_market):**
+
+```move
+// ❌ WRONG: Don't use init_module for user-triggered creation with parameters
+// init_module can't take multiple parameters!
+
+// ✅ CORRECT: Use public entry function for creating individual markets
+public entry fun create_market(
+    creator: &signer,
+    question: String,
+    end_time: u64,
+) {
+    // Users call this AFTER deployment to create individual markets
+    // This can be called multiple times with different parameters
+    // This is NOT deployment initialization
+
+    let constructor_ref = object::create_object(signer::address_of(creator));
+    let object_signer = object::generate_signer(&constructor_ref);
+
+    move_to(&object_signer, Market {
+        question,
+        end_time,
+        creator: signer::address_of(creator),
+        // ... more fields
+    });
+}
+
+// If prediction market needs marketplace-level config, THAT would use init_module:
+fun init_module(deployer: &signer) {
+    // Optional: Set up marketplace-level config (fees, admin, etc.)
+    // But individual market creation happens in create_market()
+}
+```
+
+**Example 3 - NFT Marketplace (How to handle multiple parameters):**
+
+```move
+// ❌ WRONG: Trying to pass custom parameters to init_module
+// fun init_module(deployer: &signer, fee_bps: u64) { ... }  // ERROR: Can't do this!
+
+// ❌ WRONG: Public initialize with custom parameters
+public entry fun initialize(admin: &signer, fee_bps: u64) { ... }  // Requires manual call
+
+// ✅ CORRECT Option A: init_module with defaults + admin update
+fun init_module(deployer: &signer) {
+    // Set reasonable defaults
+    create_config(deployer, 250); // 2.5% default
+}
+
+public entry fun update_marketplace_config(admin: &signer, new_fee: u64) {
+    // Admin can customize after deployment
+}
+
+// ✅ CORRECT Option B: No global config needed, per-listing fees
+// If each listing can have its own fee, no init_module needed at all!
+public entry fun create_listing(seller: &signer, nft: Object<Token>, fee_bps: u64) {
+    // Each listing has its own configuration
+}
+```
 
 ### Events
+
 - ✅ Define events with `#[event]` attribute and `has drop, store` abilities
 - ✅ Emit events for ALL significant activities (create, transfer, update, delete)
 - ✅ Use `event::emit<EventType>(event_instance)` to emit events
@@ -262,19 +558,29 @@ When writing Move contracts, you MUST:
 When writing Move contracts, you MUST NEVER:
 
 ### Digital Assets (NFTs) ⭐ CRITICAL
-- ❌ **NEVER use legacy TokenV1 standard** (deprecated, all tokens migrated to Digital Asset)
-- ❌ **NEVER import** `aptos_token::token` (legacy module - use `aptos_token_objects::token` instead)
-- ❌ **NEVER use** generic `Object<T>` for NFTs (use `Object<AptosToken>` specifically)
+
+- ❌ **NEVER use** `Object<token::Token>` for NFTs (use `Object<AptosToken>` specifically)
+- ❌ **NEVER use** generic `Object<T>` for NFTs (use `Object<AptosToken>`)
+- ❌ **NEVER use legacy TokenV1** (deprecated - use Digital Asset standard)
+- ❌ **NEVER import** `aptos_token::token` (legacy - use `aptos_token_objects::token`)
 - ❌ **NEVER create tokens** without a parent collection
-- ❌ **NEVER skip royalty configuration** when creating collections
-- ❌ **NEVER use** `token::create_token_script()` or other legacy token functions
+- ❌ **NEVER use public `initialize()`** for marketplace setup (use `init_module()`)
+
+### Fungible Assets (Tokens/Coins) ⭐ CRITICAL
+
+- ❌ **NEVER use legacy coin module** for new token contracts
+- ❌ **NEVER import** `aptos_framework::coin` for new tokens (use FA instead)
+- ❌ **NEVER require recipient opt-in** (FA doesn't need `coin::register()`)
+- ❌ **NEVER expose MintRef/BurnRef** publicly without authorization
 
 ### Legacy Patterns
+
 - ❌ NEVER use resource accounts (use named objects instead)
 - ❌ NEVER use raw addresses for objects (use `Object<T>`)
 - ❌ NEVER use `account::create_resource_account()` (deprecated)
 
 ### Security Violations ⭐ CRITICAL
+
 - ❌ NEVER return ConstructorRef from public functions (can reclaim ownership after transfer)
 - ❌ NEVER expose `&mut` references in public functions (mem::swap attacks)
 - ❌ NEVER skip signer verification in entry functions
@@ -291,6 +597,7 @@ When writing Move contracts, you MUST NEVER:
 - ❌ NEVER reuse publishing keys between testnet and mainnet
 
 ### Bad Practices
+
 - ❌ NEVER skip input validation (especially minimum thresholds for fees)
 - ❌ NEVER use magic numbers for errors
 - ❌ NEVER ignore division precision loss (validate fees > 0)
@@ -298,9 +605,23 @@ When writing Move contracts, you MUST NEVER:
 - ❌ NEVER create helper functions that just return named addresses (use `@addr` directly)
 - ❌ NEVER forget to emit events for significant activities
 - ❌ NEVER use old syntax when V2 syntax is available (vector::borrow vs vector[i])
-- ❌ NEVER skip `init_module` for contracts that need initialization
 - ❌ NEVER split atomic operations (enables front-running)
 - ❌ NEVER pass `&mut` to untrusted callbacks without re-validation
+
+### Initialization Anti-Patterns ⭐ CRITICAL
+
+- ❌ **NEVER use public entry `initialize()` function for DEPLOYMENT-TIME config setup** (use private `init_module()`
+  with defaults instead)
+- ❌ **NEVER skip `init_module` when your contract has global config/registry** (admin, fees, protocol state) that needs
+  DEFAULT values at deployment
+- ❌ **NEVER try to pass multiple parameters to init_module** (it can ONLY take `&signer` - use defaults + admin update
+  functions)
+- ❌ NEVER make init_module public (it's automatically called by the VM, must be private)
+- ❌ NEVER put user-specific initialization in init_module (that belongs in per-user entry functions)
+- ❌ **NEVER confuse deployment initialization with user actions:**
+  - `init_module` = deployment-time config (marketplace admin, default fees) - ONE TIME
+  - `create_market()` = user creates individual market - MULTIPLE TIMES
+  - `create_listing()` = user creates listing - MULTIPLE TIMES
 
 ## Common Patterns
 
@@ -561,14 +882,33 @@ module marketplace_addr::marketplace {
 **INCORRECT:** Don't create separate init functions or helper functions for named addresses
 
 ```move
-// ❌ WRONG: Separate public init function
-public entry fun initialize(deployer: &signer) {
-    // This won't be called automatically on deployment
+// ❌ WRONG: Public entry initialize function instead of init_module
+public entry fun initialize(admin: &signer, fee_bps: u64) {
+    // PROBLEMS with this approach:
+    // 1. Requires manual call after deployment (extra transaction, costs gas)
+    // 2. User must remember to call it (risk of forgetting)
+    // 3. Can be called by anyone unless protected (security risk)
+    // 4. Can potentially be called multiple times (need extra protection)
+    // 5. Contract is non-functional until initialized
+
+    let constructor_ref = object::create_object(signer::address_of(admin));
+    // ... initialization code
+}
+
+// ✅ CORRECT: Use private init_module instead
+fun init_module(deployer: &signer) {
+    // Automatically called on deployment - no manual step!
+    // Private - can't be called by users
+    // Guaranteed one-time execution
+    // Contract is immediately functional after deployment
+
+    let constructor_ref = object::create_named_object(deployer, b"CONFIG");
+    // ... initialization code
 }
 
 // ❌ WRONG: Unnecessary helper function for named address
 fun get_marketplace_address(): address {
-    @marketplace_addr  // Just use @marketplace_addr directly!
+    @marketplace_addr  // Just use @marketplace_addr directly in code!
 }
 ```
 
@@ -791,19 +1131,19 @@ public fun update_item(registry: &mut Registry, index: u64, value: u64) {
 
 ## Edge Cases to Handle
 
-| Scenario | Check | Error Code |
-|----------|-------|------------|
-| Zero amounts | `assert!(amount > 0, E_ZERO_AMOUNT)` | E_ZERO_AMOUNT |
-| Excessive amounts | `assert!(amount <= MAX, E_AMOUNT_TOO_HIGH)` | E_AMOUNT_TOO_HIGH |
-| Empty vectors | `assert!(vector::length(&v) > 0, E_EMPTY_VECTOR)` | E_EMPTY_VECTOR |
-| Empty strings | `assert!(string::length(&s) > 0, E_EMPTY_STRING)` | E_EMPTY_STRING |
-| Strings too long | `assert!(string::length(&s) <= MAX, E_STRING_TOO_LONG)` | E_STRING_TOO_LONG |
-| Zero address | `assert!(addr != @0x0, E_ZERO_ADDRESS)` | E_ZERO_ADDRESS |
-| Overflow | `assert!(a <= MAX_U64 - b, E_OVERFLOW)` | E_OVERFLOW |
-| Underflow | `assert!(a >= b, E_UNDERFLOW)` | E_UNDERFLOW |
-| Division by zero | `assert!(divisor > 0, E_DIVISION_BY_ZERO)` | E_DIVISION_BY_ZERO |
-| Unauthorized access | `assert!(signer == expected, E_UNAUTHORIZED)` | E_UNAUTHORIZED |
-| Not object owner | `assert!(object::owner(obj) == user, E_NOT_OWNER)` | E_NOT_OWNER |
+| Scenario            | Check                                                   | Error Code         |
+| ------------------- | ------------------------------------------------------- | ------------------ |
+| Zero amounts        | `assert!(amount > 0, E_ZERO_AMOUNT)`                    | E_ZERO_AMOUNT      |
+| Excessive amounts   | `assert!(amount <= MAX, E_AMOUNT_TOO_HIGH)`             | E_AMOUNT_TOO_HIGH  |
+| Empty vectors       | `assert!(vector::length(&v) > 0, E_EMPTY_VECTOR)`       | E_EMPTY_VECTOR     |
+| Empty strings       | `assert!(string::length(&s) > 0, E_EMPTY_STRING)`       | E_EMPTY_STRING     |
+| Strings too long    | `assert!(string::length(&s) <= MAX, E_STRING_TOO_LONG)` | E_STRING_TOO_LONG  |
+| Zero address        | `assert!(addr != @0x0, E_ZERO_ADDRESS)`                 | E_ZERO_ADDRESS     |
+| Overflow            | `assert!(a <= MAX_U64 - b, E_OVERFLOW)`                 | E_OVERFLOW         |
+| Underflow           | `assert!(a >= b, E_UNDERFLOW)`                          | E_UNDERFLOW        |
+| Division by zero    | `assert!(divisor > 0, E_DIVISION_BY_ZERO)`              | E_DIVISION_BY_ZERO |
+| Unauthorized access | `assert!(signer == expected, E_UNAUTHORIZED)`           | E_UNAUTHORIZED     |
+| Not object owner    | `assert!(object::owner(obj) == user, E_NOT_OWNER)`      | E_NOT_OWNER        |
 
 ## Complete Example: NFT Collection
 
@@ -943,6 +1283,7 @@ module my_addr::nft_collection {
 ## References
 
 **Official Documentation:**
+
 - Digital Asset Standard: https://aptos.dev/build/smart-contracts/digital-asset
 - Digital Asset (Standards): https://aptos.dev/standards/digital-asset/
 - Your First NFT Tutorial: https://aptos.dev/tutorials/your-first-nft/
@@ -951,16 +1292,19 @@ module my_addr::nft_collection {
 - Move Book: https://aptos.dev/build/smart-contracts/book
 
 **Example Repositories:**
+
 - aptos-core/aptos-move/move-examples/
 - aptos-core/aptos-move/framework/aptos-token-objects/
 
 **Pattern Documentation (Local):**
+
 - `../../patterns/DIGITAL_ASSETS.md` - ⭐ Digital Asset (NFT) standard - CRITICAL for NFTs
 - `../../patterns/OBJECTS.md` - Comprehensive object model guide
 - `../../patterns/SECURITY.md` - Security checklist and patterns
 - `../../patterns/MOVE_V2_SYNTAX.md` - Modern syntax examples
 
 **Related Skills:**
+
 - `generate-tests` - Write tests for contracts (use AFTER writing contracts)
 - `security-audit` - Audit contracts before deployment
 - `search-aptos-examples` - Find similar examples (use BEFORE writing)
