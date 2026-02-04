@@ -6,22 +6,50 @@ This repository provides specialized skills and patterns for AI assistants (Clau
 
 ## Features
 
-- **17+ Specialized Skills** - Context-aware skills for Move development and fullstack dApp building
+- **11 Specialized Skills** - Context-aware skills for Move smart contract development
 - **Move Smart Contracts** - Modern Move V2 object model patterns
-- **TypeScript SDK** - Frontend integration with @aptos-labs/ts-sdk
-- **Wallet Integration** - @aptos-labs/wallet-adapter-react patterns
 - **Security-First** - Comprehensive security checklist and audit patterns
 - **100% Test Coverage** - Automated test generation with coverage requirements
 - **Auto-Activation** - Skills trigger automatically based on developer actions
+- **Pattern Library** - Reference documentation for objects, digital assets, fungible assets, and more
+
+## Installation
+
+### Via npx skills (Recommended)
+
+```bash
+npx skills add iskysun96/aptos-agent-skills
+```
+
+### Claude Code Plugin
+
+```bash
+/plugin marketplace add iskysun96/aptos-agent-skills
+```
+
+### Selective Installation
+
+```bash
+# Core Move skills only
+npx skills add iskysun96/aptos-agent-skills \
+  --skill write-contracts \
+  --skill generate-tests \
+  --skill security-audit \
+  --skill deploy-contracts
+```
+
+See [INSTALL.md](INSTALL.md) for more installation options.
 
 ## Quick Start
 
 ### For Claude Code Users
 
-1. Clone this repository into your project or alongside it:
+1. Install via npx skills or clone this repository:
 
    ```bash
-   git clone https://github.com/your-org/aptos-agent-skills.git
+   npx skills add iskysun96/aptos-agent-skills
+   # or
+   git clone https://github.com/iskysun96/aptos-agent-skills.git
    ```
 
 2. The `CLAUDE.md` file will be automatically detected and loaded by Claude Code
@@ -30,78 +58,60 @@ This repository provides specialized skills and patterns for AI assistants (Clau
    - "Create a new dApp" → `scaffold-project` skill activates
    - "Write an NFT contract" → `search-aptos-examples` + `write-contracts` activate
    - After writing code → `generate-tests` auto-activates
-   - "Connect wallet" → `integrate-wallet-adapter` activates
-   - "Call contract from frontend" → `connect-contract-to-frontend` activates
+   - "Deploy to testnet" → `deploy-contracts` activates
+   - "Check security" → `security-audit` activates
 
 ### For Other Editors (Cursor, Copilot)
 
-1. Clone this repository
+1. Install via npx skills or clone this repository
 2. Reference skill files in your prompts:
    ```
    @skills/move/write-contracts/SKILL.md Help me build an NFT marketplace
    ```
-3. Include `setups/AGENTS.md` in your workspace context
+3. Include `AGENTS.md` in your workspace context
 
 ## Repository Structure
 
 ```
 aptos-agent-skills/
+├── AGENTS.md                              # Main orchestration for AI assistants
 ├── CLAUDE.md                              # Auto-loader for Claude Code
+├── INSTALL.md                             # Installation guide
 ├── README.md
 ├── package.json
+├── .claude-plugin/
+│   └── marketplace.json                   # Claude Code marketplace config
 │
 ├── skills/
-│   │
-│   ├── project/                           # Project scaffolding & setup
-│   │   └── scaffold-project/              # Bootstrap from templates (degit)
-│   │
-│   ├── move/                              # Move smart contract development
-│   │   ├── write-contracts/
-│   │   ├── generate-tests/
-│   │   ├── security-audit/
-│   │   ├── deploy-contracts/
-│   │   ├── search-aptos-examples/
-│   │   ├── use-aptos-cli/
-│   │   ├── troubleshoot-errors/
-│   │   ├── analyze-gas-optimization/
-│   │   ├── generate-move-scripts/
-│   │   └── implement-upgradeable-contracts/
-│   │
-│   ├── sdk/                               # TypeScript SDK usage
-│   │   ├── use-typescript-sdk/            # SDK client & operations
-│   │   └── query-onchain-data/            # Reading blockchain state
-│   │
-│   ├── wallet/                            # Wallet integration
-│   │   └── integrate-wallet-adapter/      # Wallet connection & management
-│   │
-│   ├── frontend/                          # Frontend patterns
-│   │   ├── connect-contract-to-frontend/  # Entry & view functions
-│   │   └── handle-transactions/           # Transaction UX
-│   │
-│   └── testing/                           # Testing & QA
-│       └── test-fullstack-dapp/           # E2E testing patterns
+│   ├── project/
+│   │   └── scaffold-project/              # Bootstrap from templates
+│   └── move/
+│       ├── write-contracts/
+│       ├── generate-tests/
+│       ├── security-audit/
+│       ├── deploy-contracts/
+│       ├── search-aptos-examples/
+│       ├── use-aptos-cli/
+│       ├── troubleshoot-errors/
+│       ├── analyze-gas-optimization/
+│       ├── generate-move-scripts/
+│       └── implement-upgradeable-contracts/
 │
 ├── patterns/
-│   │
-│   ├── move/                              # Move reference docs
-│   │   ├── OBJECTS.md
-│   │   ├── SECURITY.md
-│   │   ├── DIGITAL_ASSETS.md
-│   │   ├── FUNGIBLE_ASSETS.md
-│   │   ├── MOVE_V2_SYNTAX.md
-│   │   ├── ADVANCED_TYPES.md
-│   │   └── STORAGE_OPTIMIZATION.md
-│   │
-│   └── fullstack/                         # Fullstack reference docs
-│       ├── TYPESCRIPT_SDK.md              # Complete SDK reference
-│       ├── WALLET_ADAPTER.md              # Wallet integration patterns
-│       └── FRONTEND_PATTERNS.md           # React + Aptos patterns
+│   └── move/
+│       ├── OBJECTS.md
+│       ├── SECURITY.md
+│       ├── DIGITAL_ASSETS.md
+│       ├── FUNGIBLE_ASSETS.md
+│       ├── MOVE_V2_SYNTAX.md
+│       ├── ADVANCED_TYPES.md
+│       ├── STORAGE_OPTIMIZATION.md
+│       └── TESTING.md
 │
 └── setups/
-    ├── AGENTS.md                          # Workflow orchestration
-    ├── claude-code/README.md
-    ├── cursor/README.md
-    └── copilot/README.md
+    ├── cursor/README.md                   # Cursor setup guide
+    ├── copilot/README.md                  # GitHub Copilot setup guide
+    └── claude-code/README.md              # Claude Code setup guide
 ```
 
 ## Core Principles
@@ -176,41 +186,16 @@ const [count] = await aptos.view({
 - **generate-move-scripts** - Create atomic scripts
 - **implement-upgradeable-contracts** - Contract upgrade patterns
 
-### TypeScript SDK
-- **use-typescript-sdk** - @aptos-labs/ts-sdk patterns
-- **query-onchain-data** - View functions, resource queries, events
-
-### Wallet Integration
-- **integrate-wallet-adapter** - WalletProvider, useWallet, connection states
-
-### Frontend Development
-- **connect-contract-to-frontend** - Entry functions, view functions, type encoding
-- **handle-transactions** - Transaction UX, loading states, error handling
-
-### Testing
-- **test-fullstack-dapp** - E2E testing patterns
-
 ## Example Workflows
 
-### Workflow: Build Fullstack dApp
+### Workflow: Build Move Contracts
 
-1. `scaffold-project` → Bootstrap fullstack template
-2. `write-contracts` → Write Move modules
-3. `generate-tests` → Create Move tests
-4. `security-audit` → Audit before deployment
-5. `deploy-contracts` → Deploy to devnet
-6. `connect-contract-to-frontend` → Wire up entry/view functions
-7. `integrate-wallet-adapter` → Configure wallet connection
-8. `handle-transactions` → Polish transaction UX
-9. `test-fullstack-dapp` → E2E testing
-
-### Workflow: Contract Only
-
-1. `scaffold-project` → Bootstrap contract-only template
-2. `write-contracts` → Write Move modules
-3. `generate-tests` → Create Move tests
-4. `security-audit` → Audit before deployment
-5. `deploy-contracts` → Deploy to network
+1. `scaffold-project` → Bootstrap project template
+2. `search-aptos-examples` → Find reference implementations
+3. `write-contracts` → Write Move modules
+4. `generate-tests` → Create Move tests
+5. `security-audit` → Audit before deployment
+6. `deploy-contracts` → Deploy to network
 
 ## Formatting
 
@@ -255,11 +240,11 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## Roadmap
 
 - [x] Core Move skills (11 skills)
-- [x] Repository restructure for fullstack support
-- [ ] TypeScript SDK skills
-- [ ] Wallet integration skills
-- [ ] Frontend integration skills
-- [ ] E2E testing skills
+- [x] Agent Skills Open Standard compliance
+- [ ] TypeScript SDK skills (Coming Soon)
+- [ ] Wallet integration skills (Coming Soon)
+- [ ] Frontend integration skills (Coming Soon)
+- [ ] E2E testing skills (Coming Soon)
 - [ ] Example projects
 
 ---
